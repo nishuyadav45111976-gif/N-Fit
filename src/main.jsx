@@ -1,134 +1,67 @@
 import React, {useMemo, useState} from "react";
 import { createRoot } from "react-dom/client";
-import { Home, Utensils, Dumbbell, TrendingUp, Settings, Plus, ChevronRight, Flame, Droplets, Trophy, Trash2, ChevronDown } from "lucide-react";
+import { Home, Utensils, Dumbbell, TrendingUp, Settings, Plus, ChevronRight, Flame, Droplets, Trophy, Trash2, X, Pencil, Check, Image as ImageIcon } from "lucide-react";
 import "./styles.css";
 
-const todayKey = () => new Date().toISOString().slice(0,10);
-const STORAGE = "nfit-v2";
-const defaultData = {
-  weight: 49,
-  goalWeight: 60,
-  calGoal: 2700,
-  proteinGoal: 130,
-  waterGoal: 2.5,
-  foodByDay: {},
-  workoutsByDay: {},
-  weightHistory: [{date: todayKey(), weight:49}],
-  waterByDay: {}
+const todayKey=()=>new Date().toISOString().slice(0,10);
+const STORAGE="nfit-v3", OLD_STORAGE="nfit-v2";
+const defaultExercises={
+ Chest:["Bench Press","Incline Dumbbell Press","Cable Fly","Pec Deck","Chest Press Machine","Dumbbell Fly"],
+ Back:["Lat Pulldown","Seated Cable Row","One-Arm Dumbbell Row","Barbell Row","Straight-Arm Pulldown","Back Extension"],
+ Shoulders:["Overhead Press","Dumbbell Shoulder Press","Lateral Raise","Rear Delt Fly","Face Pull","Front Raise"],
+ Biceps:["Barbell Curl","Dumbbell Curl","Hammer Curl","Incline Dumbbell Curl","Cable Curl","Preacher Curl"],
+ Triceps:["Cable Pushdown","Overhead Triceps Extension","Skull Crusher","Rope Pushdown","Dips","Close-Grip Bench Press"],
+ Legs:["Barbell Squat","Leg Press","Romanian Deadlift","Leg Extension","Leg Curl","Walking Lunges","Calf Raise"]
 };
-
-const exerciseLibrary = {
-  Chest: ["Bench Press","Incline Dumbbell Press","Cable Fly","Pec Deck","Chest Press Machine","Dumbbell Fly"],
-  Back: ["Lat Pulldown","Seated Cable Row","One-Arm Dumbbell Row","Barbell Row","Straight-Arm Pulldown","Back Extension"],
-  Shoulders: ["Overhead Press","Dumbbell Shoulder Press","Lateral Raise","Rear Delt Fly","Face Pull","Front Raise"],
-  Biceps: ["Barbell Curl","Dumbbell Curl","Hammer Curl","Incline Dumbbell Curl","Cable Curl","Preacher Curl"],
-  Triceps: ["Cable Pushdown","Overhead Triceps Extension","Skull Crusher","Rope Pushdown","Dips","Close-Grip Bench Press"],
-  Legs: ["Barbell Squat","Leg Press","Romanian Deadlift","Leg Extension","Leg Curl","Walking Lunges","Calf Raise"]
-};
-const weightOptions = Array.from({length: 41},(_,i)=>(i+1)*2.5);
-const repOptions = Array.from({length: 30},(_,i)=>i+1);
-
-const foodDatabase = {
-  Eggs: {cal:72,protein:6.3,fat:4.8,carbs:.4},
-  "Ghee (1 tbsp)": {cal:126,protein:0,fat:14,carbs:0},
-  "Tomato (50 g)": {cal:9,protein:.45,fat:.1,carbs:2},
-  "Onion (30 g)": {cal:12,protein:.3,fat:0,carbs:2.8},
-  "Green chilli (5 g)": {cal:2,protein:.1,fat:0,carbs:.4},
-  "Besan (100 g)": {cal:387,protein:22,fat:6.7,carbs:58},
-  "Chicken breast (100 g cooked)": {cal:165,protein:31,fat:3.6,carbs:0},
-  Rice: {cal:130,protein:2.7,fat:.3,carbs:28},
-  Roti: {cal:120,protein:3.5,fat:3,carbs:18}
-};
-const recipes = {
-  "Egg Bhurji": {
-    servings: 1,
-    ingredients: [
-      {name:"Eggs", qty:"2 eggs", amount:2, unit:"eggs"},
-      {name:"Ghee", qty:"2 tbsp", amount:2, unit:"tbsp"},
-      {name:"Tomato", qty:"50 g", amount:50, unit:"g"},
-      {name:"Onion", qty:"30 g", amount:30, unit:"g"},
-      {name:"Green chilli", qty:"5 g", amount:5, unit:"g"},
-      {name:"Spices", qty:"salt + masala", amount:0, unit:""}
-    ],
-    note:"Default recipe. You can change the egg/ghee quantities before adding."
-  }
-};
-
-function load(){try{return {...defaultData,...JSON.parse(localStorage.getItem(STORAGE)||"{}")}}catch{return defaultData}}
-function save(data){localStorage.setItem(STORAGE,JSON.stringify(data))}
-function foodItem(name,qty,cal,protein,fat=0,carbs=0,recipe=false,ingredients=[]){return {id:crypto.randomUUID?.()||String(Date.now()+Math.random()),name,qty,cal,protein,fat,carbs,recipe,ingredients}}
-function calcRecipe(recipe, eggs=2, gheeTbsp=2){
-  const cal = eggs*foodDatabase.Eggs.cal + gheeTbsp*foodDatabase["Ghee (1 tbsp)"].cal + foodDatabase["Tomato (50 g)"].cal + foodDatabase["Onion (30 g)"].cal + foodDatabase["Green chilli (5 g)"].cal;
-  const protein = eggs*foodDatabase.Eggs.protein + foodDatabase["Tomato (50 g)"].protein + foodDatabase["Onion (30 g)"].protein + foodDatabase["Green chilli (5 g)"].protein;
-  const fat = eggs*foodDatabase.Eggs.fat + gheeTbsp*foodDatabase["Ghee (1 tbsp)"].fat + .1;
-  const carbs = eggs*foodDatabase.Eggs.carbs + 2 + 2.8 + .4;
-  return {cal:Math.round(cal),protein:Number(protein.toFixed(1)),fat:Number(fat.toFixed(1)),carbs:Number(carbs.toFixed(1))};
-}
+const weightOptions=Array.from({length:81},(_,i)=>(i+1)*2.5), repOptions=Array.from({length:40},(_,i)=>i+1);
+const ingredientDatabase=[
+ {id:"egg",name:"Egg",unit:"piece",cal:72,protein:6.3,fat:4.8,carbs:.4},
+ {id:"ghee",name:"Ghee",unit:"tbsp",cal:126,protein:0,fat:14,carbs:0},
+ {id:"oil",name:"Cooking oil",unit:"tbsp",cal:119,protein:0,fat:13.5,carbs:0},
+ {id:"tomato",name:"Tomato",unit:"g",base:100,cal:18,protein:.9,fat:.2,carbs:3.9},
+ {id:"onion",name:"Onion",unit:"g",base:100,cal:40,protein:1.1,fat:.1,carbs:9.3},
+ {id:"chilli",name:"Green chilli",unit:"g",base:100,cal:40,protein:1.9,fat:.4,carbs:8.8},
+ {id:"besan",name:"Besan",unit:"g",base:100,cal:387,protein:22,fat:6.7,carbs:58},
+ {id:"chicken",name:"Chicken breast (cooked)",unit:"g",base:100,cal:165,protein:31,fat:3.6,carbs:0},
+ {id:"rice",name:"Cooked rice",unit:"g",base:100,cal:130,protein:2.7,fat:.3,carbs:28},
+ {id:"roti",name:"Roti",unit:"piece",cal:120,protein:3.5,fat:3,carbs:18},
+ {id:"milk",name:"Milk",unit:"ml",base:100,cal:61,protein:3.2,fat:3.3,carbs:4.8},
+ {id:"banana",name:"Banana",unit:"piece",cal:105,protein:1.3,fat:.4,carbs:27},
+ {id:"peanut",name:"Peanuts",unit:"g",base:100,cal:567,protein:25.8,fat:49.2,carbs:16.1},
+ {id:"curd",name:"Curd",unit:"g",base:100,cal:61,protein:3.5,fat:3.3,carbs:4.7}
+];
+const defaultRecipes=[{id:"egg-bhurji",name:"Egg Bhurji",ingredients:[{id:"egg",amount:2},{id:"ghee",amount:2},{id:"tomato",amount:50},{id:"onion",amount:30},{id:"chilli",amount:5}]}];
+const defaultData={weight:49,goalWeight:60,calGoal:2700,proteinGoal:130,waterGoal:2.5,foodByDay:{},workoutsByDay:{},weightHistory:[{date:todayKey(),weight:49}],waterByDay:{},exerciseLibrary:defaultExercises,recipes:defaultRecipes,finishedWorkouts:{}};
+function mergeData(raw){const d={...defaultData,...(raw||{})};d.exerciseLibrary=raw?.exerciseLibrary||defaultExercises;d.recipes=raw?.recipes||defaultRecipes;d.finishedWorkouts=raw?.finishedWorkouts||{};return d}
+function load(){try{const c=localStorage.getItem(STORAGE);if(c)return mergeData(JSON.parse(c));const o=localStorage.getItem(OLD_STORAGE);if(o)return mergeData(JSON.parse(o))}catch{}return defaultData}
+function save(d){localStorage.setItem(STORAGE,JSON.stringify(d))}
+function uid(){return crypto.randomUUID?.()||String(Date.now()+Math.random())}
+function nutritionForIngredient(item,amount){const factor=item.unit==="piece"||item.unit==="tbsp"?Number(amount):Number(amount)/(item.base||100);return{cal:item.cal*factor,protein:item.protein*factor,fat:item.fat*factor,carbs:item.carbs*factor}}
+function calcIngredients(items){return items.reduce((a,x)=>{const d=ingredientDatabase.find(i=>i.id===x.id);if(!d)return a;const n=nutritionForIngredient(d,x.amount);return{cal:a.cal+n.cal,protein:a.protein+n.protein,fat:a.fat+n.fat,carbs:a.carbs+n.carbs}},{cal:0,protein:0,fat:0,carbs:0})}
+function foodItem(name,qty,n,recipe=false,ingredients=[]){return{id:uid(),name,qty,cal:n.cal,protein:n.protein,fat:n.fat,carbs:n.carbs,recipe,ingredients}}
 
 function App(){
- const [tab,setTab]=useState("home");
- const [data,setData]=useState(load);
- const day=todayKey();
- const update=(patch)=>setData(prev=>{const next={...prev,...patch};save(next);return next});
- const food=data.foodByDay[day]||[];
- const workout=data.workoutsByDay[day]||{};
+ const[tab,setTab]=useState("home"),[data,setData]=useState(load),day=todayKey();
+ const update=patch=>setData(prev=>{const next={...prev,...patch};save(next);return next});
+ const food=data.foodByDay[day]||[], workout=data.workoutsByDay[day]||{};
  const totals=useMemo(()=>food.reduce((a,f)=>({cal:a.cal+f.cal,protein:a.protein+f.protein,fat:a.fat+f.fat,carbs:a.carbs+f.carbs}),{cal:0,protein:0,fat:0,carbs:0}),[food]);
- const addFood=(item)=>update({foodByDay:{...data.foodByDay,[day]:[...food,item]}});
- const removeFood=(id)=>update({foodByDay:{...data.foodByDay,[day]:food.filter(f=>f.id!==id)}});
- const addWeight=(w)=>update({weight:w,weightHistory:[...data.weightHistory,{date:day,weight:w}]});
- const water=data.waterByDay[day]||0;
- const addWater=()=>update({waterByDay:{...data.waterByDay,[day]:Math.min(data.waterGoal,water+.25)}});
- return <div className="app">
-  <header className="topbar"><div><div className="eyebrow">PERSONAL FITNESS</div><h1>N-FIT</h1></div><div className="avatar">N</div></header>
-  <main>
-   {tab==="home"&&<HomePage data={data} totals={totals} water={water} setTab={setTab} addWater={addWater}/>} 
-   {tab==="food"&&<FoodPage food={food} totals={totals} addFood={addFood} removeFood={removeFood}/>} 
-   {tab==="workout"&&<WorkoutPage workout={workout} updateWorkout={(w)=>update({workoutsByDay:{...data.workoutsByDay,[day]:w}})}/>} 
-   {tab==="progress"&&<ProgressPage data={data} addWeight={addWeight}/>} 
-   {tab==="settings"&&<SettingsPage data={data} update={update}/>} 
-  </main>
-  <nav className="nav">{[["home",Home,"Home"],["food",Utensils,"Food"],["workout",Dumbbell,"Train"],["progress",TrendingUp,"Progress"],["settings",Settings,"Settings"]].map(([id,Icon,label])=><button className={tab===id?"active":""} onClick={()=>setTab(id)} key={id}><Icon size={20}/><span>{label}</span></button>)}</nav>
- </div>
+ const addFood=item=>update({foodByDay:{...data.foodByDay,[day]:[...food,item]}}), removeFood=id=>update({foodByDay:{...data.foodByDay,[day]:food.filter(f=>f.id!==id)}});
+ const addWeight=w=>update({weight:w,weightHistory:[...(data.weightHistory||[]),{date:day,weight:w}]});
+ const water=data.waterByDay[day]||0, addWater=()=>update({waterByDay:{...data.waterByDay,[day]:Math.min(data.waterGoal,water+.25)}});
+ return <div className="app"><header className="topbar"><div><div className="eyebrow">PERSONAL FITNESS</div><h1>N-FIT</h1></div><div className="avatar">N</div></header><main>
+  {tab==="home"&&<HomePage data={data} totals={totals} water={water} setTab={setTab} addWater={addWater}/>} {tab==="food"&&<FoodPage food={food} totals={totals} addFood={addFood} removeFood={removeFood}/>} {tab==="workout"&&<WorkoutPage data={data} workout={workout} updateData={update}/>} {tab==="progress"&&<ProgressPage data={data} addWeight={addWeight}/>} {tab==="settings"&&<SettingsPage data={data} update={update}/>}</main>
+  <nav className="nav">{[["home",Home,"Home"],["food",Utensils,"Food"],["workout",Dumbbell,"Train"],["progress",TrendingUp,"Progress"],["settings",Settings,"Settings"]].map(([id,I,label])=><button className={tab===id?"active":""} onClick={()=>setTab(id)} key={id}><I size={20}/><span>{label}</span></button>)}</nav></div>
 }
-
-function HomePage({data,totals,water,setTab,addWater}){const pct=Math.min(100,Math.round(totals.cal/data.calGoal*100));return <section className="page">
- <div className="welcome"><span>{new Date().toLocaleDateString(undefined,{weekday:"long",day:"numeric",month:"long"})}</span><strong>Keep showing up.</strong></div>
- <div className="heroCard"><div><span className="label">CURRENT WEIGHT</span><div className="big">{Number(data.weight).toFixed(1)} <small>kg</small></div></div><div className="goal">GOAL <b>{data.goalWeight} kg</b></div></div>
- <div className="sectionTitle"><h2>Today</h2><span>{pct}% calories</span></div><div className="macroGrid"><Macro icon={<Flame size={18}/>} value={totals.cal} suffix={`/ ${data.calGoal} kcal`} label="Calories" pct={pct}/><Macro icon={<Trophy size={18}/>} value={`${totals.protein}g`} suffix={`/ ${data.proteinGoal}g`} label="Protein" pct={Math.min(100,totals.protein/data.proteinGoal*100)}/></div>
- <div className="card workoutCard"><div className="cardHead"><div><span className="label">TODAY'S TRAINING</span><h2>Build your session</h2></div><Dumbbell size={24}/></div><p>Choose from your saved exercise library and log each set.</p><button className="primary" onClick={()=>setTab("workout")}>START WORKOUT <ChevronRight size={18}/></button></div>
- <div className="quickGrid"><button onClick={()=>setTab("food")}><Utensils/><b>Add food</b><span>Recipes + foods</span></button><button onClick={()=>setTab("progress")}><TrendingUp/><b>Log weight</b><span>Track progress</span></button></div>
- <div className="card hydration"><Droplets/><div><b>Water</b><span>{water.toFixed(2)} / {data.waterGoal} L</span></div><button onClick={addWater}>+ 250 ml</button></div>
- </section>}
+function HomePage({data,totals,water,setTab,addWater}){const pct=Math.min(100,Math.round(totals.cal/data.calGoal*100)),finished=data.finishedWorkouts?.[todayKey()];return <section className="page"><div className="welcome"><span>{new Date().toLocaleDateString(undefined,{weekday:"long",day:"numeric",month:"long"})}</span><strong>Keep showing up.</strong></div><div className="heroCard"><div><span className="label">CURRENT WEIGHT</span><div className="big">{Number(data.weight).toFixed(1)} <small>kg</small></div></div><div className="goal">GOAL <b>{data.goalWeight} kg</b></div></div><div className="sectionTitle"><h2>Today</h2><span>{pct}% calories</span></div><div className="macroGrid"><Macro icon={<Flame size={18}/>} value={Math.round(totals.cal)} suffix={`/ ${data.calGoal} kcal`} label="Calories" pct={pct}/><Macro icon={<Trophy size={18}/>} value={`${totals.protein.toFixed(1)}g`} suffix={`/ ${data.proteinGoal}g`} label="Protein" pct={Math.min(100,totals.protein/data.proteinGoal*100)}/></div><div className="card workoutCard"><div className="cardHead"><div><span className="label">TODAY'S TRAINING</span><h2>{finished?"Workout completed ✓":"Build your session"}</h2></div><Dumbbell size={24}/></div><p>{finished?`Finished at ${finished.time}. Your workout is saved.`:"Choose from your saved exercise library and log each set."}</p><button className="primary" onClick={()=>setTab("workout")}>{finished?"VIEW WORKOUT":"START WORKOUT"}<ChevronRight size={18}/></button></div><div className="quickGrid"><button onClick={()=>setTab("food")}><Utensils/><b>Add food</b><span>Recipes + foods</span></button><button onClick={()=>setTab("progress")}><TrendingUp/><b>Log weight</b><span>Track progress</span></button></div><div className="card hydration"><Droplets/><div><b>Water</b><span>{water.toFixed(2)} / {data.waterGoal} L</span></div><button onClick={addWater}>+ 250 ml</button></div></section>}
 function Macro({icon,value,suffix,label,pct}){return <div className="macro">{icon}<b>{value}</b><span>{suffix}</span><div className="bar"><i style={{width:pct+"%"}}/></div><small>{label}</small></div>}
 
-function FoodPage({food,totals,addFood,removeFood}){
- const [show,setShow]=useState(false); const [recipeOpen,setRecipeOpen]=useState(false); const [eggs,setEggs]=useState(2); const [ghee,setGhee]=useState(2);
- const addSimple=()=>{const n=prompt("Food name"); if(!n)return; const cal=Number(prompt("Calories (kcal)")||0), protein=Number(prompt("Protein (g)")||0); addFood(foodItem(n,"1 serving",cal,protein));};
- const r=calcRecipe(recipes["Egg Bhurji"],eggs,ghee);
- return <section className="page"><div className="pageTitle"><div><span className="label">NUTRITION</span><h2>Food log</h2></div><button className="round" onClick={()=>setShow(!show)}><Plus/></button></div>
- <div className="nutritionHero"><div><span>CALORIES</span><strong>{Math.round(totals.cal)}</strong><small>kcal today</small></div><div><span>PROTEIN</span><strong>{totals.protein.toFixed(1)}g</strong><small>logged today</small></div></div>
- {show&&<div className="addPanel card"><button className="recipeButton" onClick={()=>setRecipeOpen(!recipeOpen)}><span>🍳</span><div><b>Egg Bhurji</b><small>2 eggs + ghee + tomato + onion + chilli</small></div><ChevronDown className={recipeOpen?"rot": ""}/></button>{recipeOpen&&<div className="recipeBox"><div className="adjustGrid"><label>Eggs<select value={eggs} onChange={e=>setEggs(Number(e.target.value))}>{[1,2,3,4,5,6].map(n=><option key={n}>{n}</option>)}</select></label><label>Ghee<select value={ghee} onChange={e=>setGhee(Number(e.target.value))}>{[0,1,2,3,4].map(n=><option key={n}>{n} tbsp</option>)}</select></label></div><div className="ingredientList"><b>It will add automatically:</b><span>{eggs} eggs</span><span>{ghee} tbsp ghee</span><span>50 g tomato</span><span>30 g onion</span><span>5 g green chilli</span><span>salt + spices</span></div><div className="recipeTotal"><b>{r.cal} kcal · {r.protein}g protein</b><button className="primary" onClick={()=>{addFood(foodItem("Egg Bhurji",`${eggs} eggs · ${ghee} tbsp ghee`,r.cal,r.protein,r.fat,r.carbs,true,[`${eggs} eggs`,`${ghee} tbsp ghee`,`50 g tomato`,`30 g onion`,`5 g green chilli`,`salt + spices`]));setShow(false);setRecipeOpen(false)}}>ADD TO TODAY</button></div></div>}<button className="simpleAdd" onClick={addSimple}>+ Add another food manually</button></div>}
- <div className="sectionTitle"><h2>Today's food</h2><span>{food.length} items</span></div><div className="list">{food.length===0?<div className="empty">No food logged yet. Add a recipe above.</div>:food.map(f=><div className="foodRow" key={f.id}><div className="foodIcon">{f.recipe?"🍳":"🍽️"}</div><div className="grow"><b>{f.name}</b><span>{f.qty}</span>{f.recipe&&<small className="ingredients">{f.ingredients.join(" · ")}</small>}</div><div className="foodMacros"><b>{Math.round(f.cal)}</b><span>{f.protein}g P</span></div><button className="iconBtn" onClick={()=>removeFood(f.id)}><Trash2 size={16}/></button></div>)}</div>
- </section>
-}
+function IngredientEditor({items,setItems}){const add=()=>setItems([...items,{id:"tomato",amount:50}]);const upd=(i,p)=>setItems(items.map((x,j)=>j===i?{...x,...p}:x));return <><div className="builderHead"><b>Ingredients</b><span>No calories/protein to enter</span></div>{items.map((x,i)=>{const d=ingredientDatabase.find(a=>a.id===x.id)||ingredientDatabase[0];return <div className="ingredientRow" key={i}><select value={x.id} onChange={e=>upd(i,{id:e.target.value})}>{ingredientDatabase.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select><input inputMode="decimal" value={x.amount} onChange={e=>upd(i,{amount:e.target.value})}/><span>{d.unit}</span><button className="iconBtn" onClick={()=>setItems(items.filter((_,j)=>j!==i))}><X size={16}/></button></div>})}<button className="addIngredient" onClick={add}>+ ADD INGREDIENT</button></>}
+function FoodPage({food,totals,addFood,removeFood}){const[show,setShow]=useState(false),[mode,setMode]=useState("recipe"),[name,setName]=useState(""),[ingredients,setIngredients]=useState(defaultRecipes[0].ingredients.map(x=>({...x})));const n=calcIngredients(ingredients);const addRecipe=()=>{const clean=ingredients.filter(x=>Number(x.amount)>0);if(!name.trim()||!clean.length)return;addFood(foodItem(name.trim(),"1 serving",n,true,clean.map(x=>{const d=ingredientDatabase.find(i=>i.id===x.id);return `${x.amount} ${d.unit} ${d.name}`})));setShow(false);setName("")};return <section className="page"><div className="pageTitle"><div><span className="label">NUTRITION</span><h2>Food log</h2></div><button className="round" onClick={()=>setShow(!show)}><Plus/></button></div><div className="nutritionHero"><div><span>CALORIES</span><strong>{Math.round(totals.cal)}</strong><small>kcal today</small></div><div><span>PROTEIN</span><strong>{totals.protein.toFixed(1)}g</strong><small>logged today</small></div></div>{show&&<div className="addPanel card"><div className="modeTabs"><button className={mode==="recipe"?"sel":""} onClick={()=>setMode("recipe")}>Build a recipe</button><button className={mode==="manual"?"sel":""} onClick={()=>setMode("manual")}>Quick food</button></div>{mode==="recipe"?<div className="recipeBuilder"><label>RECIPE NAME<input value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Egg Bhurji"/></label><IngredientEditor items={ingredients} setItems={setIngredients}/><div className="autoNutrition"><div><span>CALORIES</span><b>{Math.round(n.cal)} kcal</b></div><div><span>PROTEIN</span><b>{n.protein.toFixed(1)} g</b></div><div><span>FAT</span><b>{n.fat.toFixed(1)} g</b></div><div><span>CARBS</span><b>{n.carbs.toFixed(1)} g</b></div></div><button className="primary" onClick={addRecipe}>ADD TO TODAY</button><p className="helper">Example: Egg Bhurji → 2 eggs + 2 tbsp ghee + 50 g tomato + 30 g onion + 5 g chilli. N-FIT calculates everything automatically.</p></div>:<QuickFood addFood={addFood}/>}</div>}<div className="sectionTitle"><h2>Today's food</h2><span>{food.length} items</span></div><div className="list">{food.length===0?<div className="empty">No food logged yet. Tap + to build a recipe.</div>:food.map(f=><div className="foodRow" key={f.id}><div className="foodIcon">{f.recipe?"🍳":"🍽️"}</div><div className="grow"><b>{f.name}</b><span>{f.qty}</span>{f.recipe&&<small className="ingredients">{f.ingredients.join(" · ")}</small>}</div><div className="foodMacros"><b>{Math.round(f.cal)}</b><span>{f.protein.toFixed(1)}g P</span></div><button className="iconBtn" onClick={()=>removeFood(f.id)}><Trash2 size={16}/></button></div>)}</div></section>}
+function QuickFood({addFood}){const[name,setName]=useState(""),[items,setItems]=useState([{id:"banana",amount:1}]),n=calcIngredients(items);const add=()=>{if(!name.trim())return;addFood(foodItem(name,"1 serving",n,false,items.map(x=>{const d=ingredientDatabase.find(i=>i.id===x.id);return `${x.amount} ${d.unit} ${d.name}`})));setName("")};return <div className="recipeBuilder"><label>FOOD NAME<input value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Banana shake"/></label><IngredientEditor items={items} setItems={setItems}/><div className="autoNutrition"><div><span>CALORIES</span><b>{Math.round(n.cal)} kcal</b></div><div><span>PROTEIN</span><b>{n.protein.toFixed(1)} g</b></div></div><button className="primary" onClick={add}>ADD TO TODAY</button></div>}
 
-function WorkoutPage({workout,updateWorkout}){
- const [muscle,setMuscle]=useState("Chest"); const [selected,setSelected]=useState(exerciseLibrary.Chest[0]); const [sets,setSets]=useState(workout[selected]||[{kg:10,reps:8,done:false},{kg:10,reps:8,done:false},{kg:10,reps:8,done:false}]);
- const selectExercise=(name)=>{setSelected(name);setSets(workout[name]||[{kg:10,reps:8,done:false},{kg:10,reps:8,done:false},{kg:10,reps:8,done:false}])};
- const saveSets=(next)=>{setSets(next);updateWorkout({...workout,[selected]:next})};
- const addSet=()=>saveSets([...sets,{kg:sets.at(-1)?.kg||10,reps:sets.at(-1)?.reps||8,done:false}]);
- return <section className="page"><div className="pageTitle"><div><span className="label">EXERCISE LIBRARY</span><h2>Train</h2></div></div>
- <div className="muscleTabs">{Object.keys(exerciseLibrary).map(m=><button className={muscle===m?"sel":""} onClick={()=>{setMuscle(m);selectExercise(exerciseLibrary[m][0])}} key={m}>{m}</button>)}</div>
- <div className="exercisePicker">{exerciseLibrary[muscle].map(e=><button className={selected===e?"selected":""} onClick={()=>selectExercise(e)} key={e}>{e}</button>)}</div>
- <div className="card exercise"><div className="exerciseHead"><div><span className="label">{muscle.toUpperCase()}</span><h3>{selected}</h3><span>Log your weight and reps for every set.</span></div><Dumbbell/></div>
- <div className="setHead"><span>SET</span><span>WEIGHT</span><span>REPS</span><span>DONE</span></div>
- {sets.map((s,i)=><div className="setRow" key={i}><span>{i+1}</span><select value={s.kg} onChange={e=>saveSets(sets.map((x,j)=>j===i?{...x,kg:Number(e.target.value)}:x))}>{weightOptions.map(w=><option key={w}>{w}</option>)}</select><select value={s.reps} onChange={e=>saveSets(sets.map((x,j)=>j===i?{...x,reps:Number(e.target.value)}:x))}>{repOptions.map(r=><option key={r}>{r}</option>)}</select><button className={s.done?"done":""} onClick={()=>saveSets(sets.map((x,j)=>j===i?{...x,done:!x.done}:x))}>✓</button></div>)}
- <button className="addSet" onClick={addSet}>+ ADD SET</button></div><button className="widePrimary">FINISH WORKOUT</button>
- </section>
-}
+function ExerciseIllustration({name}){const n=name.toLowerCase();let type="press";if(n.includes("squat")||n.includes("leg press")||n.includes("lunge")||n.includes("leg extension")||n.includes("leg curl")||n.includes("calf"))type="legs";else if(n.includes("pulldown")||n.includes("row")||n.includes("back extension"))type="pull";else if(n.includes("curl")||n.includes("hammer"))type="curl";else if(n.includes("lateral")||n.includes("rear delt")||n.includes("face pull")||n.includes("shoulder"))type="shoulder";else if(n.includes("fly")||n.includes("pec deck"))type="fly";return <div className="exerciseVisual"><div className="visualLabel"><ImageIcon size={13}/> EXERCISE FORM</div><svg viewBox="0 0 320 150" role="img" aria-label={`${name} exercise illustration`}><line x1="35" y1="125" x2="285" y2="125" className="floor"/>{type==="press"&&<><line x1="70" y1="105" x2="245" y2="105" className="bench"/><circle cx="120" cy="70" r="13" className="body"/><path d="M130 78 L165 96 L205 96 M160 96 L150 118 M190 96 L210 118" className="body"/><line x1="145" y1="55" x2="205" y2="55" className="bar"/></>}{type==="fly"&&<><line x1="70" y1="105" x2="245" y2="105" className="bench"/><circle cx="145" cy="67" r="13" className="body"/><path d="M145 80 L145 104 M145 87 L105 65 M145 87 L185 65 M145 104 L125 122 M145 104 L165 122" className="body"/><line x1="105" y1="65" x2="95" y2="58" className="bar"/><line x1="185" y1="65" x2="195" y2="58" className="bar"/></>}{type==="pull"&&<><line x1="235" y1="25" x2="235" y2="118" className="machine"/><line x1="85" y1="25" x2="235" y2="25" className="machine"/><circle cx="135" cy="63" r="12" className="body"/><path d="M135 75 L135 104 M135 82 L105 48 M135 82 L165 48 M135 104 L118 122 M135 104 L153 122" className="body"/><line x1="105" y1="48" x2="105" y2="30" className="bar"/><line x1="165" y1="48" x2="165" y2="30" className="bar"/></>}{type==="curl"&&<><circle cx="145" cy="48" r="12" className="body"/><path d="M145 60 L145 100 M145 70 L120 82 M145 70 L170 82 M145 100 L128 122 M145 100 L162 122" className="body"/><path d="M120 82 Q105 70 110 60 M170 82 Q185 70 180 60" className="bar"/></>}{type==="shoulder"&&<><circle cx="145" cy="48" r="12" className="body"/><path d="M145 60 L145 102 M145 70 L105 50 M145 70 L185 50 M145 102 L128 122 M145 102 L162 122" className="body"/><line x1="100" y1="47" x2="110" y2="52" className="bar"/><line x1="180" y1="52" x2="190" y2="47" className="bar"/></>}{type==="legs"&&<><circle cx="145" cy="43" r="12" className="body"/><path d="M145 55 L145 83 M145 65 L115 75 M145 65 L175 75 M145 83 L115 108 L130 122 M145 83 L175 108 L160 122" className="body"/><line x1="105" y1="73" x2="185" y2="73" className="bar"/></>}</svg><b>{name}</b><span>Illustration • controlled movement</span></div>}
 
-function ProgressPage({data,addWeight}){const [weight,setWeight]=useState(data.weight); const history=data.weightHistory||[]; const min=Math.min(...history.map(x=>x.weight),data.weight)-.5,max=Math.max(...history.map(x=>x.weight),data.weight)+.5;return <section className="page"><div className="pageTitle"><div><span className="label">PROGRESS</span><h2>Your journey</h2></div></div><div className="statGrid"><div className="stat"><span>CURRENT</span><b>{Number(data.weight).toFixed(1)} kg</b></div><div className="stat"><span>GOAL</span><b>{data.goalWeight} kg</b></div><div className="stat"><span>TO GO</span><b>{Math.max(0,data.goalWeight-data.weight).toFixed(1)} kg</b></div></div><div className="card chart"><div className="cardHead"><div><span className="label">BODY WEIGHT</span><h3>Saved entries</h3></div><TrendingUp/></div><div className="spark">{history.slice(-14).map((v,i,a)=><div className="point" key={i} style={{left:`${a.length===1?50:i/(a.length-1)*90+5}%`,bottom:`${(v.weight-min)/(max-min)*75+10}%`}}><b>{v.weight}</b></div>)}</div></div><div className="card inputCard"><label>LOG TODAY'S WEIGHT</label><div className="weightInput"><input inputMode="decimal" value={weight} onChange={e=>setWeight(e.target.value)}/><span>kg</span><button onClick={()=>addWeight(Number(weight))}>SAVE</button></div></div></section>}
-
-function SettingsPage({data,update}){return <section className="page"><div className="pageTitle"><div><span className="label">N-FIT</span><h2>Settings</h2></div></div><div className="card settings"><h3>Your targets</h3><label>Daily calories</label><input type="number" value={data.calGoal} onChange={e=>update({calGoal:Number(e.target.value)})}/><label>Daily protein (g)</label><input type="number" value={data.proteinGoal} onChange={e=>update({proteinGoal:Number(e.target.value)})}/><label>Goal weight (kg)</label><input type="number" step="0.1" value={data.goalWeight} onChange={e=>update({goalWeight:Number(e.target.value)})}/><label>Water goal (L)</label><input type="number" step="0.1" value={data.waterGoal} onChange={e=>update({waterGoal:Number(e.target.value)})}/><div className="settingLine"><span>Storage</span><b>Saved on this device</b></div><div className="settingLine"><span>App version</span><b>V2.0</b></div></div></section>}
-
+function WorkoutPage({data,workout,updateData}){const library=data.exerciseLibrary||defaultExercises;const[muscle,setMuscle]=useState("Chest"),[selected,setSelected]=useState(library.Chest?.[0]||"Bench Press"),[sets,setSets]=useState(workout[library.Chest?.[0]]||[{kg:10,reps:8,done:false},{kg:10,reps:8,done:false},{kg:10,reps:8,done:false}]),[manage,setManage]=useState(false),[newExercise,setNewExercise]=useState("");const selectExercise=name=>{setSelected(name);setSets(workout[name]||[{kg:10,reps:8,done:false},{kg:10,reps:8,done:false},{kg:10,reps:8,done:false}])};const saveSets=next=>{setSets(next);updateData({workoutsByDay:{...data.workoutsByDay,[todayKey()]:{...workout,[selected]:next}}})};const addSet=()=>saveSets([...sets,{kg:sets.at(-1)?.kg||10,reps:sets.at(-1)?.reps||8,done:false}]);const addExercise=()=>{const n=newExercise.trim();if(!n)return;const next={...library,[muscle]:[...(library[muscle]||[]),n]};updateData({exerciseLibrary:next});setNewExercise("");setSelected(n);setSets([{kg:10,reps:8,done:false},{kg:10,reps:8,done:false},{kg:10,reps:8,done:false}])};const rename=name=>{const n=prompt("New exercise name",name)?.trim();if(!n||n===name)return;const next={...library,[muscle]:(library[muscle]||[]).map(x=>x===name?n:x)};const wd=data.workoutsByDay[todayKey()]||{};if(wd[name]){wd[n]=wd[name];delete wd[name]}updateData({exerciseLibrary:next,workoutsByDay:{...data.workoutsByDay,[todayKey()]:wd}});setSelected(n)};const del=name=>{if((library[muscle]||[]).length<=1)return;if(!confirm(`Delete ${name} from ${muscle}?`))return;const next={...library,[muscle]:(library[muscle]||[]).filter(x=>x!==name)};updateData({exerciseLibrary:next});if(selected===name)selectExercise(next[muscle][0])};const finish=()=>{const doneExercises=Object.entries(workout).filter(([,v])=>Array.isArray(v)&&v.some(s=>s.done)).length;updateData({finishedWorkouts:{...(data.finishedWorkouts||{}),[todayKey()]:{time:new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}),exercises:doneExercises}}});alert("Workout finished and saved ✓")};return <section className="page"><div className="pageTitle"><div><span className="label">EXERCISE LIBRARY</span><h2>Train</h2></div><button className={manage?"round manageOn":"round"} onClick={()=>setManage(!manage)}><Settings size={18}/></button></div>{manage&&<div className="card manager"><b>Manage {muscle} exercises</b><div className="addExerciseRow"><input value={newExercise} onChange={e=>setNewExercise(e.target.value)} placeholder={`New ${muscle} exercise`}/><button onClick={addExercise}><Plus size={17}/></button></div><p>Add, rename or delete exercises in the selected body-part library.</p></div>}<div className="muscleTabs">{Object.keys(library).map(m=><button className={muscle===m?"sel":""} onClick={()=>{setMuscle(m);selectExercise(library[m][0])}} key={m}>{m}</button>)}</div><div className="exercisePicker">{(library[muscle]||[]).map(e=><div className="exerciseChip" key={e}><button className={selected===e?"selected":""} onClick={()=>selectExercise(e)}>{e}</button>{manage&&<div className="chipTools"><button onClick={()=>rename(e)}><Pencil size={12}/></button><button onClick={()=>del(e)}><Trash2 size={12}/></button></div>}</div>)}</div><ExerciseIllustration name={selected}/><div className="card exercise"><div className="exerciseHead"><div><span className="label">{muscle.toUpperCase()}</span><h3>{selected}</h3><span>Log your weight and reps for every set.</span></div><Dumbbell/></div><div className="setHead"><span>SET</span><span>WEIGHT</span><span>REPS</span><span>DONE</span></div>{sets.map((s,i)=><div className="setRow" key={i}><span>{i+1}</span><select value={s.kg} onChange={e=>saveSets(sets.map((x,j)=>j===i?{...x,kg:Number(e.target.value)}:x))}>{weightOptions.map(w=><option key={w}>{w}</option>)}</select><select value={s.reps} onChange={e=>saveSets(sets.map((x,j)=>j===i?{...x,reps:Number(e.target.value)}:x))}>{repOptions.map(r=><option key={r}>{r}</option>)}</select><button className={s.done?"done":""} onClick={()=>saveSets(sets.map((x,j)=>j===i?{...x,done:!x.done}:x))}>✓</button></div>)}<button className="addSet" onClick={addSet}>+ ADD SET</button></div><button className="widePrimary" onClick={finish}><Check size={17}/> FINISH WORKOUT</button></section>}
+function ProgressPage({data,addWeight}){const[w,setW]=useState(data.weight),h=data.weightHistory||[],min=Math.min(...h.map(x=>x.weight),data.weight)-.5,max=Math.max(...h.map(x=>x.weight),data.weight)+.5;return <section className="page"><div className="pageTitle"><div><span className="label">PROGRESS</span><h2>Your journey</h2></div></div><div className="statGrid"><div className="stat"><span>CURRENT</span><b>{Number(data.weight).toFixed(1)} kg</b></div><div className="stat"><span>GOAL</span><b>{data.goalWeight} kg</b></div><div className="stat"><span>TO GO</span><b>{Math.max(0,data.goalWeight-data.weight).toFixed(1)} kg</b></div></div><div className="card chart"><div className="cardHead"><div><span className="label">BODY WEIGHT</span><h3>Saved entries</h3></div><TrendingUp/></div><div className="spark">{h.slice(-14).map((v,i,a)=><div className="point" key={i} style={{left:`${a.length===1?50:i/(a.length-1)*90+5}%`,bottom:`${(v.weight-min)/(max-min)*75+10}%`}}><b>{v.weight}</b></div>)}</div></div><div className="card inputCard"><label>LOG TODAY'S WEIGHT</label><div className="weightInput"><input inputMode="decimal" value={w} onChange={e=>setW(e.target.value)}/><span>kg</span><button onClick={()=>addWeight(Number(w))}>SAVE</button></div></div></section>}
+function SettingsPage({data,update}){return <section className="page"><div className="pageTitle"><div><span className="label">N-FIT</span><h2>Settings</h2></div></div><div className="card settings"><h3>Your targets</h3><label>Daily calories</label><input type="number" value={data.calGoal} onChange={e=>update({calGoal:Number(e.target.value)})}/><label>Daily protein (g)</label><input type="number" value={data.proteinGoal} onChange={e=>update({proteinGoal:Number(e.target.value)})}/><label>Goal weight (kg)</label><input type="number" step="0.1" value={data.goalWeight} onChange={e=>update({goalWeight:Number(e.target.value)})}/><label>Water goal (L)</label><input type="number" step="0.1" value={data.waterGoal} onChange={e=>update({waterGoal:Number(e.target.value)})}/><div className="settingLine"><span>Storage</span><b>Saved on this device</b></div><div className="settingLine"><span>App version</span><b>V3.0</b></div></div></section>}
 createRoot(document.getElementById("root")).render(<App/>);
