@@ -1,4 +1,4 @@
-# N-FIT V5
+# N-FIT V6
 
 Personal, mobile-first fitness tracker. 100% free to run — static site, no
 backend, no paid services. Deploy it anywhere that serves static files
@@ -48,3 +48,15 @@ V4 changes:
 - Food recipes calculate calories, protein, fat and carbs from ingredients automatically.
 - Added more common ingredients such as paneer, oats, potato, dal, bread, apple and peanut butter.
 - Data is stored locally on the device with localStorage.
+
+## V6 changes
+
+- Exercise library expanded to ~100 exercises across 8 muscle groups
+  (added Forearms and Core as new groups), based on your reference lists.
+  Existing saved data migrates automatically — nothing added replaces
+  exercises you already customized.
+- Every exercise now gets its own custom-drawn illustration (squat, hinge/
+  deadlift, row, hanging leg raise, plank, glute bridge, etc. — ~20 distinct
+  poses) matched by exercise name, instead of the old 6-category fallback.
+  These are original line-art drawings in the app's own style — not copies
+  of any reference chart, since those are copyrighted.
