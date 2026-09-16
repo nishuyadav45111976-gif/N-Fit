@@ -34,12 +34,14 @@ const STORAGE = "nfit-v4", OLD_STORAGE = "nfit-v3", OLDER_STORAGE = "nfit-v2";
 const slug = (s) => (s || "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "ex";
 
 const defaultExerciseNames = {
-  Chest: ["Bench Press", "Incline Dumbbell Press", "Cable Fly", "Pec Deck", "Chest Press Machine", "Dumbbell Fly"],
-  Back: ["Lat Pulldown", "Seated Cable Row", "One-Arm Dumbbell Row", "Barbell Row", "Straight-Arm Pulldown", "Back Extension"],
+  Chest: ["Barbell Bench Press", "Incline Barbell Press", "Decline Barbell Press", "Close-Grip Barbell Press", "Dumbbell Bench Press", "Incline Dumbbell Press", "Decline Dumbbell Press", "Dumbbell Flyes", "Incline Dumbbell Flyes", "Cable Crossover", "Low-to-High Cable Fly", "Cable Chest Press", "Chest Press Machine", "Pec Deck Machine", "Push-Ups", "Dips"],
+  Back: ["Pull-Ups", "Lat Pulldown", "Chin-Ups", "Straight Arm Pulldown", "Barbell Row", "T-Bar Row", "Seated Cable Row", "Single Arm Dumbbell Row", "Chest Supported Row", "Face Pull", "Reverse Pec Deck", "Rear Delt Fly", "Dumbbell Pullover", "Inverted Row", "Hyperextension", "Superman", "Conventional Deadlift", "Romanian Deadlift", "Rack Pull", "Good Morning"],
   Shoulders: ["Overhead Press", "Dumbbell Shoulder Press", "Lateral Raise", "Rear Delt Fly", "Face Pull", "Front Raise"],
-  Biceps: ["Barbell Curl", "Dumbbell Curl", "Hammer Curl", "Incline Dumbbell Curl", "Cable Curl", "Preacher Curl"],
-  Triceps: ["Cable Pushdown", "Overhead Triceps Extension", "Skull Crusher", "Rope Pushdown", "Dips", "Close-Grip Bench Press"],
-  Legs: ["Barbell Squat", "Leg Press", "Romanian Deadlift", "Leg Extension", "Leg Curl", "Walking Lunges", "Calf Raise"]
+  Biceps: ["Barbell Curl", "Dumbbell Curl", "Hammer Curl", "Preacher Curl", "Incline Dumbbell Curl", "Cable Curl"],
+  Triceps: ["Cable Pushdown", "Overhead Triceps Extension", "Skull Crusher", "Rope Overhead Extension", "Dips", "Close-Grip Bench Press"],
+  Forearms: ["Wrist Curl", "Reverse Wrist Curl", "Farmer's Walk", "Plate Pinch Hold", "Wrist Roller", "Zottman Curl"],
+  Legs: ["Barbell Back Squat", "Leg Press", "Smith Machine Squat", "Hack Squat", "Leg Extension", "Bulgarian Split Squat", "Romanian Deadlift (RDL)", "Lying Leg Curl", "Seated Leg Curl", "Good Morning", "Single Leg Deadlift", "Hip Thrust", "Cable Pull-Through", "Glute Bridge", "Donkey Kick", "Standing Calf Raise", "Seated Calf Raise", "Sumo Deadlift", "Front Squat", "Walking Lunges", "Step-Ups"],
+  Core: ["Hanging Knee Raise", "Lying Leg Raise", "Reverse Crunch", "Decline Sit-Up", "Toes to Bar", "Side Plank", "Russian Twists", "Bicycle Crunch", "Cable Woodchopper", "Crunch", "Sit-Up", "V-Up", "Plank", "Dead Bug", "Bird Dog", "Pallof Press", "Mountain Climber", "Medicine Ball Slam", "Hanging Leg Raise", "Captain's Chair"]
 };
 // Every exercise gets a stable id (derived from muscle+name) so renaming or
 // deleting it later never breaks the link to sets you've already logged.
@@ -86,14 +88,23 @@ const defaultData = {
 };
 
 /* ---------- migrations (safe to run on every load) ---------- */
-// Older saves stored exercises as plain name strings. Give them stable ids.
+// Older saves stored exercises as plain name strings. Give them stable ids,
+// then fold in any new default exercises/muscle groups (like Forearms and
+// Core) that weren't in the library yet — without touching anything the
+// user already renamed, added, or deleted themselves.
 function migrateLibrary(raw) {
-  if (!raw) return defaultExercises;
   const out = {};
-  for (const [muscle, arr] of Object.entries(raw)) {
+  for (const [muscle, arr] of Object.entries(raw || {})) {
     out[muscle] = (arr || []).map((item) =>
       typeof item === "string" ? { id: slug(`${muscle}-${item}`), name: item } : item
     );
+  }
+  for (const [muscle, defaults] of Object.entries(defaultExercises)) {
+    if (!out[muscle]) { out[muscle] = defaults.slice(); continue; }
+    const existingNames = new Set(out[muscle].map((x) => x.name.toLowerCase()));
+    for (const ex of defaults) {
+      if (!existingNames.has(ex.name.toLowerCase())) out[muscle].push(ex);
+    }
   }
   return out;
 }
@@ -390,51 +401,65 @@ function Stepper({ value, step, min, max, onChange }) {
   </div>;
 }
 
-function ExerciseIllustration({ name }) {
-  const n = name.toLowerCase();
-  let type = "press";
-  if (n.includes("squat") || n.includes("leg press") || n.includes("lunge") || n.includes("leg extension") || n.includes("leg curl") || n.includes("calf")) type = "legs";
-  else if (n.includes("pulldown") || n.includes("row") || n.includes("back extension")) type = "pull";
-  else if (n.includes("curl") || n.includes("hammer")) type = "curl";
-  else if (n.includes("lateral") || n.includes("rear delt") || n.includes("face pull") || n.includes("shoulder") || n.includes("overhead")) type = "shoulder";
-  else if (n.includes("fly") || n.includes("pec deck")) type = "fly";
+// One clean stick-figure pose per exercise archetype (not a copy of any
+// reference chart — drawn from scratch in the app's own line-art style).
+// Each pose is [x1,y1,x2,y2,class] segments plus a head circle.
+const POSES = {
+  bench: { head: [24, 50, 6], lines: [[14, 66, 74, 66, "ill-bench"], [30, 55, 46, 58, "ill-body"], [46, 58, 42, 72, "ill-body"], [42, 72, 52, 80, "ill-body"], [34, 53, 44, 40, "ill-body"], [44, 40, 44, 26, "ill-body"], [30, 24, 58, 24, "ill-bar"]] },
+  fly: { head: [24, 50, 6], lines: [[14, 66, 74, 66, "ill-bench"], [30, 55, 46, 58, "ill-body"], [46, 58, 42, 72, "ill-body"], [42, 72, 52, 80, "ill-body"], [34, 53, 16, 42, "ill-body"], [34, 53, 52, 42, "ill-body"], [10, 40, 18, 44, "ill-bar"], [50, 44, 58, 40, "ill-bar"]] },
+  pulldown: { head: [42, 30, 6], lines: [[42, 37, 42, 55, "ill-body"], [42, 55, 33, 84, "ill-body"], [42, 55, 51, 84, "ill-body"], [42, 42, 30, 26, "ill-body"], [42, 42, 54, 26, "ill-body"], [24, 24, 60, 24, "ill-bar"]] },
+  row: { head: [30, 33, 6], lines: [[34, 39, 54, 58, "ill-body"], [54, 58, 48, 84, "ill-body"], [54, 58, 62, 84, "ill-body"], [44, 50, 34, 58, "ill-body"], [20, 60, 40, 60, "ill-bar"]] },
+  reardelt: { head: [42, 30, 6], lines: [[42, 37, 42, 55, "ill-body"], [42, 55, 33, 84, "ill-body"], [42, 55, 51, 84, "ill-body"], [42, 42, 26, 38, "ill-body"], [42, 42, 58, 38, "ill-body"], [14, 38, 26, 38, "ill-bar"], [58, 38, 70, 38, "ill-bar"]] },
+  curl: { head: [42, 30, 6], lines: [[42, 37, 42, 55, "ill-body"], [42, 55, 33, 84, "ill-body"], [42, 55, 51, 84, "ill-body"], [42, 42, 30, 50, "ill-body"], [30, 50, 34, 62, "ill-body"], [42, 42, 50, 58, "ill-body"], [30, 62, 38, 62, "ill-bar"]] },
+  triceps: { head: [42, 30, 6], lines: [[42, 37, 42, 55, "ill-body"], [42, 55, 33, 84, "ill-body"], [42, 55, 51, 84, "ill-body"], [42, 40, 52, 22, "ill-body"], [52, 22, 44, 16, "ill-body"], [40, 14, 48, 14, "ill-bar"]] },
+  shoulderpress: { head: [42, 30, 6], lines: [[42, 37, 42, 55, "ill-body"], [42, 55, 33, 84, "ill-body"], [42, 55, 51, 84, "ill-body"], [42, 40, 30, 20, "ill-body"], [42, 40, 54, 20, "ill-body"], [26, 18, 34, 18, "ill-bar"], [50, 18, 58, 18, "ill-bar"]] },
+  lateral: { head: [42, 30, 6], lines: [[42, 37, 42, 55, "ill-body"], [42, 55, 33, 84, "ill-body"], [42, 55, 51, 84, "ill-body"], [42, 40, 20, 36, "ill-body"], [42, 40, 64, 36, "ill-body"], [14, 34, 20, 38, "ill-bar"], [64, 36, 70, 32, "ill-bar"]] },
+  squat: { head: [42, 30, 6], lines: [[42, 37, 42, 55, "ill-body"], [42, 55, 34, 68, "ill-body"], [34, 68, 30, 84, "ill-body"], [42, 55, 50, 68, "ill-body"], [50, 68, 54, 84, "ill-body"], [42, 40, 30, 40, "ill-body"], [42, 40, 54, 40, "ill-body"], [22, 38, 62, 38, "ill-bar"]] },
+  hinge: { head: [42, 30, 6], lines: [[42, 37, 58, 52, "ill-body"], [58, 52, 50, 84, "ill-body"], [58, 52, 66, 84, "ill-body"], [50, 45, 46, 60, "ill-body"], [30, 60, 54, 60, "ill-bar"]] },
+  lunge: { head: [42, 30, 6], lines: [[42, 37, 42, 55, "ill-body"], [42, 55, 34, 70, "ill-body"], [34, 70, 30, 84, "ill-body"], [42, 55, 54, 64, "ill-body"], [54, 64, 60, 84, "ill-body"], [42, 42, 34, 54, "ill-body"], [42, 42, 50, 54, "ill-body"]] },
+  calf: { head: [42, 30, 6], lines: [[42, 37, 42, 55, "ill-body"], [42, 55, 33, 84, "ill-body"], [42, 55, 51, 84, "ill-body"], [33, 84, 37, 81, "ill-body"], [51, 84, 47, 81, "ill-body"], [42, 42, 34, 54, "ill-body"], [42, 42, 50, 54, "ill-body"]] },
+  glute: { head: [14, 63, 6], lines: [[20, 66, 46, 52, "ill-body"], [46, 52, 58, 66, "ill-body"], [58, 66, 58, 84, "ill-body"]] },
+  plank: { head: [76, 46, 6], lines: [[16, 80, 28, 80, "ill-body"], [28, 78, 70, 50, "ill-body"], [70, 50, 80, 80, "ill-body"]] },
+  crunch: { head: [24, 59, 5], lines: [[40, 84, 28, 64, "ill-body"], [40, 84, 52, 68, "ill-body"], [52, 68, 66, 80, "ill-body"], [30, 68, 44, 70, "ill-body"]] },
+  hanginglegs: { head: [43, 40, 6], lines: [[20, 20, 64, 20, "ill-bar"], [36, 20, 36, 34, "ill-body"], [50, 20, 50, 34, "ill-body"], [43, 46, 43, 56, "ill-body"], [43, 56, 58, 50, "ill-body"], [58, 50, 68, 54, "ill-body"]] },
+  rotation: { head: [42, 30, 6], lines: [[42, 37, 42, 55, "ill-body"], [42, 55, 33, 84, "ill-body"], [42, 55, 51, 84, "ill-body"], [42, 42, 60, 34, "ill-body"], [60, 34, 66, 30, "ill-bar"]] },
+  forearm: { head: [42, 30, 6], lines: [[42, 37, 42, 55, "ill-body"], [42, 55, 33, 84, "ill-body"], [42, 55, 51, 84, "ill-body"], [42, 42, 30, 60, "ill-body"], [42, 42, 54, 60, "ill-body"], [26, 60, 34, 60, "ill-bar"], [50, 60, 58, 60, "ill-bar"]] },
+  backext: { head: [22, 47, 5], lines: [[46, 66, 60, 66, "ill-bench"], [46, 64, 26, 52, "ill-body"], [46, 64, 66, 54, "ill-body"]] }
+};
+const POSE_RULES = [
+  [/wrist|farmer|plate pinch/, "forearm"],
+  [/calf/, "calf"],
+  [/hanging|toes to bar|captain/, "hanginglegs"],
+  [/crunch|sit-up|v-up/, "crunch"],
+  [/russian twist|woodchop|medicine ball/, "rotation"],
+  [/plank|mountain climber|dead bug|bird dog|pallof|push-up/, "plank"],
+  [/glute bridge|donkey kick|hip thrust/, "glute"],
+  [/deadlift|rdl|good morning|rack pull|pull-through/, "hinge"],
+  [/hyperextension|superman/, "backext"],
+  [/lunge|step-up/, "lunge"],
+  [/squat|leg press|leg extension|hack/, "squat"],
+  [/face pull|rear delt|reverse pec deck/, "reardelt"],
+  [/lateral raise|front raise|side bend/, "lateral"],
+  [/overhead press|shoulder press/, "shoulderpress"],
+  [/pushdown|triceps extension|skull crusher|close-grip bench|dip/, "triceps"],
+  [/curl/, "curl"],
+  [/pull-up|chin-up|pulldown/, "pulldown"],
+  [/row|pullover/, "row"],
+  [/fly|crossover|pec deck/, "fly"]
+];
+const POSE_FALLBACK = { Chest: "bench", Back: "row", Shoulders: "shoulderpress", Biceps: "curl", Triceps: "triceps", Forearms: "forearm", Legs: "squat", Core: "crunch" };
 
-  const Frame = ({ x, children }) => <g transform={`translate(${x} 0)`}>{children}</g>;
-  const person = (cx = 35, cy = 43) => <circle cx={cx} cy={cy} r="6" className="ill-head" />;
+function ExerciseIllustration({ name, muscle }) {
+  const n = name.toLowerCase();
+  const matched = POSE_RULES.find(([re]) => re.test(n));
+  const key = (matched && matched[1]) || POSE_FALLBACK[muscle] || "squat";
+  const pose = POSES[key] || POSES.squat;
   return <div className="exerciseMini">
     <div className="miniLabel">HOW TO <span>• {name}</span></div>
-    <svg viewBox="0 0 270 82" role="img" aria-label={`${name} form illustration`}>
-      <line x1="8" y1="70" x2="262" y2="70" className="ill-floor" />
-      {type === "press" && <>
-        <Frame x={0}>{person(32, 38)}<line x1="37" y1="43" x2="55" y2="57" className="ill-body" /><line x1="52" y1="57" x2="43" y2="68" className="ill-body" /><line x1="52" y1="57" x2="64" y2="68" className="ill-body" /><line x1="48" y1="52" x2="72" y2="40" className="ill-body" /><line x1="69" y1="40" x2="69" y2="30" className="ill-bar" /><line x1="60" y1="30" x2="78" y2="30" className="ill-bar" /><line x1="18" y1="61" x2="78" y2="61" className="ill-bench" /></Frame>
-        <Frame x={90}>{person(32, 38)}<line x1="37" y1="43" x2="55" y2="57" className="ill-body" /><line x1="52" y1="57" x2="43" y2="68" className="ill-body" /><line x1="52" y1="57" x2="64" y2="68" className="ill-body" /><line x1="48" y1="52" x2="72" y2="52" className="ill-body" /><line x1="69" y1="52" x2="69" y2="27" className="ill-bar" /><line x1="60" y1="27" x2="78" y2="27" className="ill-bar" /><line x1="18" y1="61" x2="78" y2="61" className="ill-bench" /></Frame>
-        <Frame x={180}>{person(32, 38)}<line x1="37" y1="43" x2="55" y2="57" className="ill-body" /><line x1="52" y1="57" x2="43" y2="68" className="ill-body" /><line x1="52" y1="57" x2="64" y2="68" className="ill-body" /><line x1="48" y1="52" x2="72" y2="40" className="ill-body" /><line x1="69" y1="40" x2="69" y2="30" className="ill-bar" /><line x1="60" y1="30" x2="78" y2="30" className="ill-bar" /><line x1="18" y1="61" x2="78" y2="61" className="ill-bench" /></Frame>
-      </>}
-      {type === "pull" && <>
-        <Frame x={0}>{person(36, 43)}<line x1="36" y1="49" x2="36" y2="62" className="ill-body" /><line x1="36" y1="52" x2="23" y2="43" className="ill-body" /><line x1="23" y1="43" x2="23" y2="29" className="ill-body" /><line x1="36" y1="52" x2="49" y2="43" className="ill-body" /><line x1="49" y1="43" x2="49" y2="29" className="ill-body" /><line x1="15" y1="26" x2="57" y2="26" className="ill-bar" /></Frame>
-        <Frame x={90}>{person(36, 43)}<line x1="36" y1="49" x2="36" y2="62" className="ill-body" /><line x1="36" y1="52" x2="29" y2="45" className="ill-body" /><line x1="29" y1="45" x2="29" y2="33" className="ill-body" /><line x1="36" y1="52" x2="43" y2="45" className="ill-body" /><line x1="43" y1="45" x2="43" y2="33" className="ill-body" /><line x1="15" y1="26" x2="57" y2="26" className="ill-bar" /></Frame>
-        <Frame x={180}>{person(36, 43)}<line x1="36" y1="49" x2="36" y2="62" className="ill-body" /><line x1="36" y1="52" x2="23" y2="43" className="ill-body" /><line x1="23" y1="43" x2="23" y2="29" className="ill-body" /><line x1="36" y1="52" x2="49" y2="43" className="ill-body" /><line x1="49" y1="43" x2="49" y2="29" className="ill-body" /><line x1="15" y1="26" x2="57" y2="26" className="ill-bar" /></Frame>
-      </>}
-      {type === "legs" && <>
-        <Frame x={0}>{person(36, 37)}<line x1="36" y1="43" x2="36" y2="54" className="ill-body" /><line x1="36" y1="46" x2="22" y2="50" className="ill-body" /><line x1="36" y1="46" x2="50" y2="50" className="ill-body" /><line x1="36" y1="54" x2="26" y2="68" className="ill-body" /><line x1="36" y1="54" x2="46" y2="68" className="ill-body" /><line x1="15" y1="42" x2="57" y2="42" className="ill-bar" /></Frame>
-        <Frame x={90}>{person(36, 42)}<line x1="36" y1="48" x2="36" y2="57" className="ill-body" /><line x1="36" y1="50" x2="22" y2="54" className="ill-body" /><line x1="36" y1="50" x2="50" y2="54" className="ill-body" /><line x1="36" y1="57" x2="25" y2="64" className="ill-body" /><line x1="36" y1="57" x2="47" y2="64" className="ill-body" /><line x1="15" y1="47" x2="57" y2="47" className="ill-bar" /></Frame>
-        <Frame x={180}>{person(36, 37)}<line x1="36" y1="43" x2="36" y2="54" className="ill-body" /><line x1="36" y1="46" x2="22" y2="50" className="ill-body" /><line x1="36" y1="46" x2="50" y2="50" className="ill-body" /><line x1="36" y1="54" x2="26" y2="68" className="ill-body" /><line x1="36" y1="54" x2="46" y2="68" className="ill-body" /><line x1="15" y1="42" x2="57" y2="42" className="ill-bar" /></Frame>
-      </>}
-      {type === "curl" && <>
-        <Frame x={0}>{person(36, 36)}<line x1="36" y1="42" x2="36" y2="58" className="ill-body" /><line x1="36" y1="47" x2="22" y2="56" className="ill-body" /><line x1="36" y1="47" x2="50" y2="56" className="ill-body" /><line x1="36" y1="58" x2="28" y2="68" className="ill-body" /><line x1="36" y1="58" x2="44" y2="68" className="ill-body" /><line x1="19" y1="59" x2="27" y2="54" className="ill-bar" /><line x1="45" y1="54" x2="53" y2="59" className="ill-bar" /></Frame>
-        <Frame x={90}>{person(36, 36)}<line x1="36" y1="42" x2="36" y2="58" className="ill-body" /><line x1="36" y1="47" x2="30" y2="57" className="ill-body" /><line x1="36" y1="47" x2="42" y2="57" className="ill-body" /><line x1="36" y1="58" x2="28" y2="68" className="ill-body" /><line x1="36" y1="58" x2="44" y2="68" className="ill-body" /><line x1="27" y1="57" x2="20" y2="52" className="ill-bar" /><line x1="45" y1="57" x2="52" y2="52" className="ill-bar" /></Frame>
-        <Frame x={180}>{person(36, 36)}<line x1="36" y1="42" x2="36" y2="58" className="ill-body" /><line x1="36" y1="47" x2="22" y2="56" className="ill-body" /><line x1="36" y1="47" x2="50" y2="56" className="ill-body" /><line x1="36" y1="58" x2="28" y2="68" className="ill-body" /><line x1="36" y1="58" x2="44" y2="68" className="ill-body" /><line x1="19" y1="59" x2="27" y2="54" className="ill-bar" /><line x1="45" y1="54" x2="53" y2="59" className="ill-bar" /></Frame>
-      </>}
-      {type === "shoulder" && <>
-        <Frame x={0}>{person(36, 36)}<line x1="36" y1="42" x2="36" y2="58" className="ill-body" /><line x1="36" y1="48" x2="20" y2="37" className="ill-body" /><line x1="36" y1="48" x2="52" y2="37" className="ill-body" /><line x1="36" y1="58" x2="28" y2="68" className="ill-body" /><line x1="36" y1="58" x2="44" y2="68" className="ill-body" /><line x1="17" y1="35" x2="24" y2="39" className="ill-bar" /><line x1="48" y1="39" x2="55" y2="35" className="ill-bar" /></Frame>
-        <Frame x={90}>{person(36, 36)}<line x1="36" y1="42" x2="36" y2="58" className="ill-body" /><line x1="36" y1="48" x2="18" y2="48" className="ill-body" /><line x1="36" y1="48" x2="54" y2="48" className="ill-body" /><line x1="36" y1="58" x2="28" y2="68" className="ill-body" /><line x1="36" y1="58" x2="44" y2="68" className="ill-body" /><line x1="15" y1="48" x2="25" y2="48" className="ill-bar" /><line x1="47" y1="48" x2="57" y2="48" className="ill-bar" /></Frame>
-        <Frame x={180}>{person(36, 36)}<line x1="36" y1="42" x2="36" y2="58" className="ill-body" /><line x1="36" y1="48" x2="20" y2="37" className="ill-body" /><line x1="36" y1="48" x2="52" y2="37" className="ill-body" /><line x1="36" y1="58" x2="28" y2="68" className="ill-body" /><line x1="36" y1="58" x2="44" y2="68" className="ill-body" /><line x1="17" y1="35" x2="24" y2="39" className="ill-bar" /><line x1="48" y1="39" x2="55" y2="35" className="ill-bar" /></Frame>
-      </>}
-      {type === "fly" && <>
-        <Frame x={0}>{person(36, 38)}<line x1="41" y1="43" x2="57" y2="57" className="ill-body" /><line x1="55" y1="57" x2="47" y2="68" className="ill-body" /><line x1="55" y1="57" x2="65" y2="68" className="ill-body" /><line x1="48" y1="50" x2="30" y2="40" className="ill-body" /><line x1="66" y1="50" x2="84" y2="40" className="ill-body" /><line x1="25" y1="38" x2="34" y2="43" className="ill-bar" /><line x1="80" y1="43" x2="89" y2="38" className="ill-bar" /><line x1="18" y1="61" x2="78" y2="61" className="ill-bench" /></Frame>
-        <Frame x={90}>{person(36, 38)}<line x1="41" y1="43" x2="57" y2="57" className="ill-body" /><line x1="55" y1="57" x2="47" y2="68" className="ill-body" /><line x1="55" y1="57" x2="65" y2="68" className="ill-body" /><line x1="48" y1="50" x2="46" y2="34" className="ill-body" /><line x1="66" y1="50" x2="68" y2="34" className="ill-body" /><line x1="40" y1="32" x2="52" y2="32" className="ill-bar" /><line x1="62" y1="32" x2="74" y2="32" className="ill-bar" /><line x1="18" y1="61" x2="78" y2="61" className="ill-bench" /></Frame>
-        <Frame x={180}>{person(36, 38)}<line x1="41" y1="43" x2="57" y2="57" className="ill-body" /><line x1="55" y1="57" x2="47" y2="68" className="ill-body" /><line x1="55" y1="57" x2="65" y2="68" className="ill-body" /><line x1="48" y1="50" x2="30" y2="40" className="ill-body" /><line x1="66" y1="50" x2="84" y2="40" className="ill-body" /><line x1="25" y1="38" x2="34" y2="43" className="ill-bar" /><line x1="80" y1="43" x2="89" y2="38" className="ill-bar" /><line x1="18" y1="61" x2="78" y2="61" className="ill-bench" /></Frame>
-      </>}
+    <svg viewBox="0 0 100 92" role="img" aria-label={`${name} form illustration`}>
+      <line x1="6" y1="84" x2="94" y2="84" className="ill-floor" />
+      {pose.lines.map((l, i) => <line key={i} x1={l[0]} y1={l[1]} x2={l[2]} y2={l[3]} className={l[4]} />)}
+      <circle cx={pose.head[0]} cy={pose.head[1]} r={pose.head[2]} className="ill-head" />
     </svg>
   </div>;
 }
@@ -531,7 +556,7 @@ function WorkoutPage({ data, workout, updateData }) {
           </div>
           <Dumbbell />
         </div>
-        <ExerciseIllustration name={selected.name} />
+        <ExerciseIllustration name={selected.name} muscle={muscle} />
       </div>
       <div className="setHead"><span>SET</span><span>WEIGHT</span><span>REPS</span><span>DONE</span></div>
       {sets.map((s, i) => <div className="setRow" key={i}>
