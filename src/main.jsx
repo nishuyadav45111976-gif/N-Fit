@@ -1,6 +1,6 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Home, Utensils, Dumbbell, TrendingUp, Settings, Plus, ChevronRight, Flame, Droplets, Trophy, Trash2, X, Pencil, Check } from "lucide-react";
+import { Home, Utensils, Dumbbell, TrendingUp, Settings, Plus, ChevronRight, Flame, Droplets, Trophy, Trash2, X, Pencil, Check, Download } from "lucide-react";
 import "./styles.css";
 
 /* ---------- dates ---------- */
@@ -84,7 +84,8 @@ const defaultRecipes = [{ id: "egg-bhurji", name: "Egg Bhurji", ingredients: [{ 
 const defaultData = {
   weight: 49, goalWeight: 60, calGoal: 2700, proteinGoal: 130, waterGoal: 2.5,
   foodByDay: {}, workoutsByDay: {}, weightHistory: [{ date: todayKey(), weight: 49 }],
-  waterByDay: {}, exerciseLibrary: defaultExercises, recipes: defaultRecipes, finishedWorkouts: {}
+  waterByDay: {}, exerciseLibrary: defaultExercises, recipes: defaultRecipes, finishedWorkouts: {},
+  measurements: { chest: [], waist: [], arms: [] }
 };
 
 /* ---------- migrations (safe to run on every load) ---------- */
@@ -130,10 +131,10 @@ function migrateWorkoutsByDay(raw, library) {
   }
   return out;
 }
-// Keeps at most one weight entry per calendar day (last one wins), so a
-// day you logged twice doesn't show as two separate points on the chart.
-function dedupeWeightHistory(arr) {
-  const sorted = arr.slice().sort((a, b) => a.date.localeCompare(b.date));
+// Keeps at most one entry per calendar day (last one wins), so a metric
+// logged twice in a day doesn't show as two separate points on a chart.
+function dedupeByDate(arr) {
+  const sorted = (arr || []).slice().sort((a, b) => a.date.localeCompare(b.date));
   const byDate = new Map();
   sorted.forEach((x) => byDate.set(x.date, x));
   return Array.from(byDate.values());
@@ -144,7 +145,12 @@ function mergeData(raw) {
   d.workoutsByDay = migrateWorkoutsByDay(raw?.workoutsByDay, d.exerciseLibrary);
   d.recipes = raw?.recipes?.length ? raw.recipes : defaultRecipes;
   d.finishedWorkouts = raw?.finishedWorkouts || {};
-  d.weightHistory = dedupeWeightHistory(raw?.weightHistory || defaultData.weightHistory);
+  d.weightHistory = dedupeByDate(raw?.weightHistory || defaultData.weightHistory);
+  d.measurements = {
+    chest: dedupeByDate(raw?.measurements?.chest),
+    waist: dedupeByDate(raw?.measurements?.waist),
+    arms: dedupeByDate(raw?.measurements?.arms)
+  };
   return d;
 }
 function load() {
@@ -179,13 +185,36 @@ function foodItem(name, qty, n, recipe = false, ingredients = []) {
 function lastSession(data, exId, today) {
   const days = Object.keys(data.workoutsByDay || {}).filter((d) => d !== today && data.workoutsByDay[d][exId]).sort().reverse();
   for (const day of days) {
-    const doneSets = (data.workoutsByDay[day][exId].sets || []).filter((s) => s.done);
+    const entry = data.workoutsByDay[day][exId];
+    const doneSets = (entry.sets || []).filter((s) => s.done);
     if (doneSets.length) {
       const top = doneSets.reduce((a, b) => (b.kg > a.kg ? b : a), doneSets[0]);
-      return { date: day, top, count: doneSets.length };
+      return { date: day, top, count: doneSets.length, sets: entry.sets || [] };
     }
   }
   return null;
+}
+// Most recent day (other than today) that has any exercises logged, for "copy previous day".
+function findPreviousWorkoutDay(data, today) {
+  const days = Object.keys(data.workoutsByDay || {}).filter((d) => d !== today && Object.keys(data.workoutsByDay[d] || {}).length).sort().reverse();
+  return days[0] || null;
+}
+// Workouts finished in the last 7 days, and a same-style consecutive-day streak ending today or yesterday.
+function weeklySummary(data) {
+  const days = Object.keys(data.finishedWorkouts || {});
+  const set = new Set(days);
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const weekCount = days.filter((d) => {
+    const [y, m, dd] = d.split("-").map(Number);
+    const diff = Math.round((now - new Date(y, m - 1, dd)) / 86400000);
+    return diff >= 0 && diff < 7;
+  }).length;
+  const cursor = new Date(now);
+  if (!set.has(todayKey(cursor))) cursor.setDate(cursor.getDate() - 1);
+  let streak = 0;
+  while (set.has(todayKey(cursor))) { streak++; cursor.setDate(cursor.getDate() - 1); }
+  return { weekCount, streak };
 }
 
 /* ---------- app shell ---------- */
@@ -204,9 +233,35 @@ function App() {
     const history = (data.weightHistory || []).filter((x) => x.date !== day);
     update({ weight: w, weightHistory: [...history, { date: day, weight: w }].sort((a, b) => a.date.localeCompare(b.date)) });
   };
+  const addMeasurement = (type, value) => {
+    const history = (data.measurements?.[type] || []).filter((x) => x.date !== day);
+    const next = [...history, { date: day, value }].sort((a, b) => a.date.localeCompare(b.date));
+    update({ measurements: { ...(data.measurements || { chest: [], waist: [], arms: [] }), [type]: next } });
+  };
 
   const water = data.waterByDay[day] || 0;
-  const addWater = () => update({ waterByDay: { ...data.waterByDay, [day]: Math.min(data.waterGoal, water + .25) } });
+  const addWater = (amount) => update({ waterByDay: { ...data.waterByDay, [day]: Math.max(0, Math.min(data.waterGoal, water + amount)) } });
+
+  // "Install app" — captures Chrome/Android's native install prompt so we can
+  // trigger it from our own button instead of relying on the browser menu.
+  // Safari/iOS never fires this event; the button just won't show there.
+  const [installEvent, setInstallEvent] = useState(null);
+  const [installed, setInstalled] = useState(false);
+  useEffect(() => {
+    const onPrompt = (e) => { e.preventDefault(); setInstallEvent(e); };
+    const onInstalled = () => { setInstalled(true); setInstallEvent(null); };
+    window.addEventListener("beforeinstallprompt", onPrompt);
+    window.addEventListener("appinstalled", onInstalled);
+    if (window.matchMedia?.("(display-mode: standalone)").matches) setInstalled(true);
+    return () => { window.removeEventListener("beforeinstallprompt", onPrompt); window.removeEventListener("appinstalled", onInstalled); };
+  }, []);
+  const canInstall = Boolean(installEvent) && !installed;
+  const installApp = async () => {
+    if (!installEvent) return;
+    installEvent.prompt();
+    const choice = await installEvent.userChoice;
+    if (choice.outcome === "accepted") setInstallEvent(null);
+  };
 
   const saveRecipe = (recipe) => {
     const withoutSameName = (data.recipes || []).filter((r) => r.name.toLowerCase() !== recipe.name.toLowerCase());
@@ -242,11 +297,11 @@ function App() {
   return <div className="app">
     <header className="topbar"><div><div className="eyebrow">PERSONAL FITNESS</div><h1>N-FIT</h1></div><div className="avatar">N</div></header>
     <main>
-      {tab === "home" && <HomePage data={data} totals={totals} water={water} setTab={setTab} addWater={addWater} />}
+      {tab === "home" && <HomePage data={data} totals={totals} water={water} setTab={setTab} addWater={addWater} canInstall={canInstall} installApp={installApp} />}
       {tab === "food" && <FoodPage food={food} totals={totals} addFood={addFood} removeFood={removeFood} recipes={data.recipes} saveRecipe={saveRecipe} deleteRecipe={deleteRecipe} />}
       {tab === "workout" && <WorkoutPage data={data} workout={workout} updateData={update} />}
-      {tab === "progress" && <ProgressPage data={data} addWeight={addWeight} />}
-      {tab === "settings" && <SettingsPage data={data} update={update} exportData={exportData} importData={importData} />}
+      {tab === "progress" && <ProgressPage data={data} addWeight={addWeight} addMeasurement={addMeasurement} />}
+      {tab === "settings" && <SettingsPage data={data} update={update} exportData={exportData} importData={importData} canInstall={canInstall} installApp={installApp} />}
     </main>
     <nav className="nav">
       {[["home", Home, "Home"], ["food", Utensils, "Food"], ["workout", Dumbbell, "Train"], ["progress", TrendingUp, "Progress"], ["settings", Settings, "Settings"]].map(([id, I, label]) =>
@@ -255,12 +310,21 @@ function App() {
   </div>;
 }
 
-function HomePage({ data, totals, water, setTab, addWater }) {
+function HomePage({ data, totals, water, setTab, addWater, canInstall, installApp }) {
   const pct = Math.min(100, Math.round(totals.cal / data.calGoal * 100));
   const finished = data.finishedWorkouts?.[todayKey()];
+  const { weekCount, streak } = weeklySummary(data);
+  const [dismissInstall, setDismissInstall] = useState(false);
   return <section className="page">
     <div className="welcome"><span>{new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })}</span><strong>Keep showing up.</strong></div>
+    {canInstall && !dismissInstall && <div className="installBanner">
+      <Download size={18} />
+      <div><b>Install N-FIT</b><span>Add it to your home screen — works offline, opens like a real app.</span></div>
+      <button className="copyBtn" onClick={installApp}>INSTALL</button>
+      <button className="iconBtn" onClick={() => setDismissInstall(true)}><X size={14} /></button>
+    </div>}
     <div className="heroCard"><div><span className="label">CURRENT WEIGHT</span><div className="big">{Number(data.weight).toFixed(1)} <small>kg</small></div></div><div className="goal">GOAL <b>{data.goalWeight} kg</b></div></div>
+    <div className="streakRow"><div><b>{weekCount}</b><span>workouts this week</span></div><div><b>{streak}</b><span>day streak</span></div></div>
     <div className="sectionTitle"><h2>Today</h2><span>{pct}% calories</span></div>
     <div className="macroGrid">
       <Macro icon={<Flame size={18} />} value={Math.round(totals.cal)} suffix={`/ ${data.calGoal} kcal`} label="Calories" pct={pct} />
@@ -275,7 +339,7 @@ function HomePage({ data, totals, water, setTab, addWater }) {
       <button onClick={() => setTab("food")}><Utensils /><b>Add food</b><span>Recipes + foods</span></button>
       <button onClick={() => setTab("progress")}><TrendingUp /><b>Log weight</b><span>Track progress</span></button>
     </div>
-    <div className="card hydration"><Droplets /><div><b>Water</b><span>{water.toFixed(2)} / {data.waterGoal} L</span></div><button onClick={addWater}>+ 250 ml</button></div>
+    <div className="card hydration"><Droplets /><div><b>Water</b><span>{water.toFixed(2)} / {data.waterGoal} L</span></div><div className="waterBtns"><button onClick={() => addWater(.1)}>+100</button><button onClick={() => addWater(.25)}>+250</button><button onClick={() => addWater(.5)}>+500</button></div></div>
   </section>;
 }
 function Macro({ icon, value, suffix, label, pct }) {
@@ -475,6 +539,16 @@ function WorkoutPage({ data, workout, updateData }) {
   const [sets, setSets] = useState((selected && workout[selected.id]?.sets) || defaultSets());
   const [manage, setManage] = useState(false);
   const [newExercise, setNewExercise] = useState("");
+  const [search, setSearch] = useState("");
+  const [restLen, setRestLen] = useState(90);
+  const [restLeft, setRestLeft] = useState(null);
+  const [dismissCopy, setDismissCopy] = useState(false);
+
+  useEffect(() => {
+    if (restLeft === null || restLeft <= 0) return;
+    const t = setTimeout(() => setRestLeft((v) => (v === null ? null : v - 1)), 1000);
+    return () => clearTimeout(t);
+  }, [restLeft]);
 
   const selectExercise = (ex) => { setSelected(ex); setSets(workout[ex.id]?.sets || defaultSets()); };
   const saveSets = (next) => {
@@ -483,6 +557,11 @@ function WorkoutPage({ data, workout, updateData }) {
     updateData({ workoutsByDay: { ...data.workoutsByDay, [today]: { ...workout, [selected.id]: { name: selected.name, sets: next } } } });
   };
   const addSet = () => saveSets([...sets, { kg: sets.at(-1)?.kg || 10, reps: sets.at(-1)?.reps || 8, done: false }]);
+  const toggleDone = (i) => {
+    const nowDone = !sets[i].done;
+    saveSets(sets.map((x, j) => (j === i ? { ...x, done: nowDone } : x)));
+    if (nowDone) { setRestLeft(restLen); try { navigator.vibrate?.(80); } catch {} }
+  };
 
   const addExercise = () => {
     const n = newExercise.trim();
@@ -524,6 +603,23 @@ function WorkoutPage({ data, workout, updateData }) {
   };
 
   const last = selected ? lastSession(data, selected.id, today) : null;
+  const quickFill = () => {
+    if (!last?.sets?.length) return;
+    saveSets(sets.map((s, i) => { const from = last.sets[i] || last.sets[last.sets.length - 1]; return { ...s, kg: from.kg, reps: from.reps }; }));
+  };
+  const isPR = (s) => s.done && last && s.kg > last.top.kg;
+
+  const filteredExercises = (library[muscle] || []).filter((ex) => ex.name.toLowerCase().includes(search.toLowerCase()));
+  const hasLoggedToday = Object.keys(workout).length > 0;
+  const prevDay = findPreviousWorkoutDay(data, today);
+  const copyPreviousDay = () => {
+    if (!prevDay) return;
+    const source = data.workoutsByDay[prevDay];
+    if (!confirm(`Copy ${Object.keys(source).length} exercise(s) from ${dateLabel(prevDay)} into today?`)) return;
+    const copied = Object.fromEntries(Object.entries(source).map(([id, v]) => [id, { name: v.name, sets: (v.sets || []).map((s) => ({ kg: s.kg, reps: s.reps, done: false })) }]));
+    updateData({ workoutsByDay: { ...data.workoutsByDay, [today]: { ...workout, ...copied } } });
+    if (selected && copied[selected.id]) setSets(copied[selected.id].sets);
+  };
 
   return <section className="page">
     <div className="pageTitle"><div><span className="label">EXERCISE LIBRARY</span><h2>Train</h2></div><button className={manage ? "round manageOn" : "round"} onClick={() => setManage(!manage)}><Settings size={18} /></button></div>
@@ -536,10 +632,22 @@ function WorkoutPage({ data, workout, updateData }) {
 
     {finished && <div className="finishBanner"><Check size={18} /><div><b>Workout saved ✓</b><span>Today's workout has been recorded.</span></div><button onClick={() => setFinished(false)}><X size={15} /></button></div>}
 
-    <div className="muscleTabs">{Object.keys(library).map((m) => <button className={muscle === m ? "sel" : ""} onClick={() => { setMuscle(m); selectExercise(library[m][0]); }} key={m}>{m}</button>)}</div>
+    {!hasLoggedToday && prevDay && !dismissCopy && <div className="copySuggest">
+      <div><b>Repeat last workout?</b><span>You trained on {dateLabel(prevDay)} — copy it into today.</span></div>
+      <button className="copyBtn" onClick={copyPreviousDay}>COPY</button>
+      <button className="iconBtn" onClick={() => setDismissCopy(true)}><X size={14} /></button>
+    </div>}
+
+    <div className="muscleTabs">{Object.keys(library).map((m) => <button className={muscle === m ? "sel" : ""} onClick={() => { setMuscle(m); setSearch(""); selectExercise(library[m][0]); }} key={m}>{m}</button>)}</div>
+
+    <div className="exerciseSearch">
+      <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={`Search ${muscle} exercises`} />
+      {search && <button className="iconBtn" onClick={() => setSearch("")}><X size={14} /></button>}
+    </div>
 
     <div className="exercisePicker">
-      {(library[muscle] || []).map((ex) => <div className="exerciseChip" key={ex.id}>
+      {filteredExercises.length === 0 && <p className="helper">No exercises match "{search}".</p>}
+      {filteredExercises.map((ex) => <div className="exerciseChip" key={ex.id}>
         <button className={selected?.id === ex.id ? "selected" : ""} onClick={() => selectExercise(ex)}>{ex.name}</button>
         {manage && <div className="chipTools"><button onClick={() => rename(ex)}><Pencil size={12} /></button><button onClick={() => del(ex)}><Trash2 size={12} /></button></div>}
       </div>)}
@@ -552,18 +660,28 @@ function WorkoutPage({ data, workout, updateData }) {
             <span className="label">{muscle.toUpperCase()}</span>
             <h3>{selected.name}</h3>
             <span>Log your weight and reps for every set.</span>
-            {last && <span className="lastTime">Last time ({daysAgo(last.date)}): {last.top.kg}kg × {last.top.reps} · {last.count} set{last.count === 1 ? "" : "s"}</span>}
+            {last && <div className="lastTimeRow"><span className="lastTime">Last time ({daysAgo(last.date)}): {last.top.kg}kg × {last.top.reps} · {last.count} set{last.count === 1 ? "" : "s"}</span><button className="quickFill" onClick={quickFill}>USE THESE</button></div>}
           </div>
           <Dumbbell />
         </div>
         <ExerciseIllustration name={selected.name} muscle={muscle} />
       </div>
+
+      <div className="restLenPicker"><span>REST</span>{[60, 90, 120].map((v) => <button className={restLen === v ? "sel" : ""} onClick={() => setRestLen(v)} key={v}>{v}s</button>)}</div>
+      {restLeft !== null && <div className={restLeft > 0 ? "restBar" : "restBar restDone"}>
+        {restLeft > 0
+          ? <span>Rest: {Math.floor(restLeft / 60)}:{String(restLeft % 60).padStart(2, "0")}</span>
+          : <span>Rest done — next set!</span>}
+        {restLeft > 0 && <button onClick={() => setRestLeft((v) => Math.min(restLen, (v || 0) + 15))}>+15s</button>}
+        <button onClick={() => setRestLeft(null)}>{restLeft > 0 ? "SKIP" : "OK"}</button>
+      </div>}
+
       <div className="setHead"><span>SET</span><span>WEIGHT</span><span>REPS</span><span>DONE</span></div>
       {sets.map((s, i) => <div className="setRow" key={i}>
         <span>{i + 1}</span>
         <Stepper value={s.kg} step={weightOptions.step} min={weightOptions.min} max={weightOptions.max} onChange={(v) => saveSets(sets.map((x, j) => (j === i ? { ...x, kg: v } : x)))} />
         <Stepper value={s.reps} step={repOptions.step} min={repOptions.min} max={repOptions.max} onChange={(v) => saveSets(sets.map((x, j) => (j === i ? { ...x, reps: v } : x)))} />
-        <button className={s.done ? "done" : ""} onClick={() => saveSets(sets.map((x, j) => (j === i ? { ...x, done: !x.done } : x)))}>✓</button>
+        <button className={s.done ? (isPR(s) ? "done pr" : "done") : ""} onClick={() => toggleDone(i)} title={isPR(s) ? "New best!" : undefined}>{isPR(s) ? "🏆" : "✓"}</button>
       </div>)}
       <button className="addSet" onClick={addSet}>+ ADD SET</button>
     </div>}
@@ -591,7 +709,16 @@ function HistoryRow({ date, summary, entry }) {
   </div>;
 }
 
-function ProgressPage({ data, addWeight }) {
+function MeasurementRow({ label, unit, history, onSave }) {
+  const latest = history?.length ? history[history.length - 1].value : null;
+  const [v, setV] = useState(latest ?? "");
+  return <div className="measureRow">
+    <div><b>{label}</b><span>{latest != null ? `${latest} ${unit} logged` : "Not logged yet"}</span></div>
+    <div className="measureInput"><input inputMode="decimal" value={v} onChange={(e) => setV(e.target.value)} /><span>{unit}</span><button onClick={() => { if (v !== "" && !Number.isNaN(Number(v))) onSave(Number(v)); }}>SAVE</button></div>
+  </div>;
+}
+
+function ProgressPage({ data, addWeight, addMeasurement }) {
   const [w, setW] = useState(data.weight);
   const h = (data.weightHistory || []).slice(-30);
   const values = h.map((x) => x.weight).concat([data.weight]);
@@ -623,6 +750,13 @@ function ProgressPage({ data, addWeight }) {
       <div className="weightInput"><input inputMode="decimal" value={w} onChange={(e) => setW(e.target.value)} /><span>kg</span><button onClick={() => addWeight(Number(w))}>SAVE</button></div>
     </div>
 
+    <div className="sectionTitle"><h2>Body measurements</h2></div>
+    <div className="card measurements">
+      <MeasurementRow label="Chest" unit="cm" history={data.measurements?.chest} onSave={(v) => addMeasurement("chest", v)} />
+      <MeasurementRow label="Waist" unit="cm" history={data.measurements?.waist} onSave={(v) => addMeasurement("waist", v)} />
+      <MeasurementRow label="Arms" unit="cm" history={data.measurements?.arms} onSave={(v) => addMeasurement("arms", v)} />
+    </div>
+
     <div className="sectionTitle"><h2>Workout history</h2><span>{history.length} sessions</span></div>
     {history.length === 0 ? <div className="empty">No finished workouts yet.</div> :
       <div className="list">{history.map(([date, summary]) => <HistoryRow key={date} date={date} summary={summary} entry={data.workoutsByDay?.[date]} />)}</div>}
@@ -630,10 +764,15 @@ function ProgressPage({ data, addWeight }) {
 }
 
 /* ---------- settings ---------- */
-function SettingsPage({ data, update, exportData, importData }) {
+function SettingsPage({ data, update, exportData, importData, canInstall, installApp }) {
   const fileRef = useRef(null);
   return <section className="page">
     <div className="pageTitle"><div><span className="label">N-FIT</span><h2>Settings</h2></div></div>
+    {canInstall && <div className="card settings">
+      <h3>Install</h3>
+      <p className="helper">Add N-FIT to your home screen for a full-screen, offline-capable app instead of a browser tab.</p>
+      <button className="primary" onClick={installApp}><Download size={15} /> INSTALL APP</button>
+    </div>}
     <div className="card settings">
       <h3>Your targets</h3>
       <label>Daily calories</label><input type="number" value={data.calGoal} onChange={(e) => update({ calGoal: Number(e.target.value) })} />
@@ -641,7 +780,7 @@ function SettingsPage({ data, update, exportData, importData }) {
       <label>Goal weight (kg)</label><input type="number" step="0.1" value={data.goalWeight} onChange={(e) => update({ goalWeight: Number(e.target.value) })} />
       <label>Water goal (L)</label><input type="number" step="0.1" value={data.waterGoal} onChange={(e) => update({ waterGoal: Number(e.target.value) })} />
       <div className="settingLine"><span>Storage</span><b>Saved on this device</b></div>
-      <div className="settingLine"><span>App version</span><b>V5.0</b></div>
+      <div className="settingLine"><span>App version</span><b>V8.0</b></div>
     </div>
     <div className="card settings">
       <h3>Backup</h3>
