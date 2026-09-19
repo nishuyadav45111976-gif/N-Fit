@@ -513,26 +513,26 @@ const POSE_RULES = [
 ];
 const POSE_FALLBACK = { Chest: "bench", Back: "row", Shoulders: "shoulderpress", Biceps: "curl", Triceps: "triceps", Forearms: "forearm", Legs: "squat", Core: "crunch" };
 
-const EXERCISE_CHARTS = {
-  Legs: "/exercise-charts/legs.webp",
-  Biceps: "/exercise-charts/arms.webp",
-  Triceps: "/exercise-charts/arms.webp",
-  Forearms: "/exercise-charts/arms.webp",
-  Back: "/exercise-charts/back.webp",
-  Core: "/exercise-charts/core.webp"
-};
+const EXERCISE_CHART_MUSCLES = new Set(["Legs", "Back", "Biceps", "Triceps", "Forearms", "Core"]);
+
+function exerciseChartCropPath(name, muscle) {
+  if (!EXERCISE_CHART_MUSCLES.has(muscle)) return null;
+  const key = slug(name);
+  // Only use crops that correspond to an exercise actually present in the supplied charts.
+  const available = defaultExerciseNames[muscle] || [];
+  if (!available.some((x) => slug(x) === key)) return null;
+  return `/exercise-illustrations/${muscle.toLowerCase()}-${key}.jpg`;
+}
 
 function ExerciseIllustration({ name, muscle }) {
-  const chart = EXERCISE_CHARTS[muscle];
-  if (chart) {
-    return <div className="exerciseMini exerciseChartMini">
-      <div className="miniLabel">EXERCISE GUIDE <span>• {muscle}</span></div>
-      <img src={chart} alt={`${muscle} workout exercise guide`} loading="lazy" />
+  const crop = exerciseChartCropPath(name, muscle);
+  if (crop) {
+    return <div className="exerciseMini exerciseCropMini">
+      <div className="miniLabel">HOW TO <span>• {name}</span></div>
+      <img src={crop} alt={`${name} exercise illustration`} />
     </div>;
   }
 
-  // Keep the existing compact illustration for muscle groups for which no
-  // replacement chart was supplied in this update (e.g. Chest/Shoulders).
   const n = name.toLowerCase();
   const matched = POSE_RULES.find(([re]) => re.test(n));
   const key = (matched && matched[1]) || POSE_FALLBACK[muscle] || "squat";
