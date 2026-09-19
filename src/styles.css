@@ -24,3 +24,11 @@
 /* V8 additions */
 .installBanner{display:flex;align-items:center;gap:9px;background:#151515;color:#fff;border-radius:14px;padding:11px 12px;margin-bottom:10px}.installBanner>div{flex:1;min-width:0}.installBanner b{display:block;font-size:11px}.installBanner span{display:block;font-size:9px;color:#bbb;margin-top:2px}.installBanner .copyBtn{background:#fff;color:#111}.installBanner .iconBtn{color:#999}
 .measureRow{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 0;border-bottom:1px solid #f0efeb}.measureRow:last-child{border-bottom:0}.measureRow>div:first-child b{display:block;font-size:12px}.measureRow>div:first-child span{display:block;font-size:9px;color:#888;margin-top:2px}.measureInput{display:flex;align-items:center;gap:5px}.measureInput input{width:52px;height:34px;border:1px solid #e2e0db;border-radius:9px;text-align:center;font-size:12px;background:#faf9f6}.measureInput span{font-size:9px;color:#999}.measureInput button{height:34px;border:0;background:#151515;color:#fff;border-radius:8px;padding:0 9px;font-size:9px;font-weight:800}
+
+/* Exercise chart references supplied for the workout library */
+.exerciseChartMini{padding:5px 5px 6px;}
+.exerciseChartMini img{display:block;width:100%;height:92px;object-fit:contain;object-position:center;border-radius:7px;margin-top:2px;background:#fff;}
+@media (max-width:380px){
+  .exerciseHeadWithVisual{grid-template-columns:1fr 112px;gap:7px}
+  .exerciseChartMini img{height:86px}
+}
